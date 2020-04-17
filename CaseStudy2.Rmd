@@ -1,0 +1,240 @@
+---
+title: "CaseStudy2"
+author: "Morgan Nelson"
+date: "3/20/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+# This project heavily leverages the "packrat" library to keep its dependencies from 
+# polluting your system.  Feel free to run this code with no worries about cleaning up 
+# your library path.  You will need to install packrat, but beyond that, this project
+# is self-contained
+
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(psych)
+library(caret)
+library(onewaytests) # provides paircomep()
+library(class)
+library(e1071)
+library(unbalanced)
+library(patchwork)
+library(ggcorrplot)
+
+cs2 <- read.csv("data/CaseStudy2-data.csv")
+
+# recode attrition as a numeric
+# cs2$Attrition <- as.numeric(cs2$Attrition)
+```
+
+```{r Initial EDA}
+# Do I need to fixup any data?
+anyNA(cs2)
+
+# generate summary statistics
+summary(cs2)
+
+# check out the column types
+str(cs2)
+
+# Look at factor columns.  Factors with multiple levels that only contain one value 
+# add no value to the analysis and can cause operations to fail
+cs2 %>% keep(is.numeric) %>% sapply(., unique)
+
+# Over18 appears to be the only factor with only one level represented.  We can remove
+# it from the dataset
+
+# Just like factors with only one level, continuous variables (ints) that do not
+# change from record to record add no value
+cs2 %>% keep(is.numeric) %>% sapply(., unique)
+
+# StandardHours is always 80
+# EmployeeCount is always 1
+
+# Other variables that do not add any information to the analysys can by
+# database IDs, employee IDs, etc.  Let's look for those and remove them as well.
+
+# ID
+# Employee Number
+
+# So, from this analysis, the following columns can be removed
+# ID
+# EmployeeCount
+# EmployeeNumber
+# Over18
+# StandardHours
+
+cs2.kept <- cs2 %>% select(-ID, -EmployeeCount, -EmployeeNumber, -Over18, -StandardHours)
+
+# graph all continuous variables as histograms with normal distribution overlays
+cs2.kept %>% keep(is.numeric) %>%  multi.hist()
+
+# correlate the numeric terms
+cs2.kept %>% keep(is.numeric) %>% cor %>% ggcorrplot(type = "upper", show.diag = FALSE)
+cs2.kept <- cs2.kept %>% mutate(AttrYes = as.numeric(ifelse(Attrition == "Yes", 1, 0)))
+
+cs2.kept.numeric <- cs2.kept %>% keep(is.numeric)
+cs2.kept.factor <- cs2.kept %>% keep(is.factor)
+
+
+
+```
+```{r noname}
+# let's look at attrition rates for individual variables
+
+cs2.kept %>% group_by(BusinessTravel) %>% summarise(AttritionPercent = sum(as.numeric(Attrition)-1)/n(), totalPeople = n())
+cs2.kept %>% group_by(DailyRate) %>% summarise(AttritionPercent = sum(as.numeric(Attrition)-1)/n(), totalPeople = n())
+# cs2.kept %>% group_by(Department) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(DistanceFromHome) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(Education) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(EducationField) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(EnvironmentSatisfaction) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(Gender) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(HourlyRate) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(JobInvolvement) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(JobLevel) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(JobRole) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(JobSatisfaction) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(MaritalStatus) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(MonthlyIncome) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(MonthlyRate) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(NumCompaniesWorked) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(OverTime) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(PercentSalaryHike) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(PerformanceRating) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(RelationshipSatisfaction) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(StockOptionLevel) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(TotalWorkingYears) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(TrainingTimesLastYear) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(WorkLifeBalance) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(YearsAtCompany) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(YearsInCurrentRole) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(YearsSinceLastPromotion) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+# cs2.kept %>% group_by(YearsWithCurrManager) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+
+```
+```{r run anovas for correlations}
+
+# run multiple ANOVAs to get all correlations
+summary(aov(AttrYes ~ ., data = cs2.kept.numeric))
+
+summary(aov(AttrYes ~ JobSatisfaction + TotalWorkingYears + NumCompaniesWorked + StockOptionLevel + Age + BusinessTravel + DailyRate + Department + DistanceFromHome + Education + EducationField + EnvironmentSatisfaction + Gender + HourlyRate + JobInvolvement + JobLevel + JobRole + MaritalStatus + MonthlyIncome + MonthlyRate + OverTime + PercentSalaryHike + PerformanceRating + TrainingTimesLastYear + WorkLifeBalance + YearsAtCompany + YearsAtCompany + YearsInCurrentRole + YearsSinceLastPromotion + YearsWithCurrManager, data = cs2.kept))
+
+# filter out low correlation and look at what's left
+summary(aov(AttrYes ~ JobSatisfaction + TotalWorkingYears + NumCompaniesWorked + StockOptionLevel + DistanceFromHome + JobInvolvement + OverTime, data = cs2.kept))
+
+# reduce the set of "most important factors" to three
+summary(aov(AttrYes ~ TotalWorkingYears + JobInvolvement + OverTime, data = cs2.kept))
+
+```
+Based on the visual output from graphing the histograms of the continuous variables, it appears that some of the distributions are not normal, and in fact appear to be more logarithmic in nature, tending to a severe right skew.  We will transform the data and see if we get a better result.
+
+```{r perform data transformations}
+
+cs2 <- cs2 %>% mutate(logTotalWorkingYears = log(TotalWorkingYears)) %>% 
+  mutate(logDistanceFromHome = log(DistanceFromHome)) %>% 
+  mutate(logMonthlyIncome = log(MonthlyIncome)) %>% 
+  mutate(logNumCompaniesWorked = log(NumCompaniesWorked)) %>% 
+  mutate(logPercentSalaryHike = log(PercentSalaryHike)) %>% 
+  mutate(logTotalWorkingYears = log(TotalWorkingYears + 0.1)) %>% 
+  mutate(logYearsAtCompany = log(YearsAtCompany))
+  
+# Graph again and compare output
+cs2[, map_lgl(cs2, is.numeric)]  %>% subset(select=c(-ID, -EmployeeCount, -EmployeeNumber, -StandardHours)) %>%  multi.hist()
+```
+
+TotalWorkingYears looks much better, but the rest of the variable don't appear to be much more normal than the were originally.  We will keep the log of TotalWorkingYears in mind as we work with the data set.
+``` {r setup the knn prediction}
+
+# set the random seed
+set.seed(124)
+
+training <-createDataPartition(cs2$Attrition, p = 0.9, list = FALSE)
+
+train_set <- cs2.kept[training,]
+test_set <- cs2.kept[-training,]
+
+tc = trainControl(method = "cv")
+
+knn_fit <- caret::train(Attrition ~ TotalWorkingYears + JobInvolvement, data = cs2.kept,
+                 method = "knn",
+                 trControl=tc,
+                 preProcess = c("center","scale"),
+                 tuneLength = 10)
+print(knn_fit)
+
+predictions <- predict(knn_fit, newdata = test_set)
+# View(data.frame(predictions, cs2_noOver18$Attrition ))
+confusionMatrix(predictions, test_set$Attrition)
+confusionMatrix(knn_fit)
+```
+
+``` {r prep for naive bayes}
+
+train_rows <- createDataPartition(cs2.kept$Attrition, p = .9, list=FALSE)
+
+train_set <- cs2.kept[train_rows,]
+test_set <- cs2.kept[-train_rows,]
+
+# distribution of attrition over the split sets:
+table(train_set$Attrition) %>% prop.table()
+table(test_set$Attrition) %>% prop.table()
+
+# data count in each set
+count(train_set)
+count(test_set)
+
+```
+```{r run training}
+
+bayes_fit <- naiveBayes(train_set[,c(29,15,23)], train_set$Attrition)
+
+predictions <- predict(bayes_fit, test_set[,c(29,15,23)])
+
+confusionMatrix(predictions, test_set$Attrition)
+
+```
+``` {r analyze bayes output}
+dim(predictions)
+bayes_fit
+summary(bayes_fit)
+
+```
+```{r preprocess the unbalanced data set}
+
+# The unbalance library can help clean up unbalanced data sets, but the output factor must have levels 0,1
+set.seed(1974)
+
+cs2.kept <- cs2.kept %>% mutate(AttrFactor = as.factor(as.numeric(cs2.kept$Attrition) -1))
+ubOutput <- cs2.kept$AttrFactor
+ubInput <- cs2.kept %>% select(-Attrition,-AttrYes, -AttrFactor)
+
+
+# SMOTE is "Synthetic Minority Oversampling TEchnique" and is an accepted way to counter
+# Minority imbalanced data sets by synthetics oversampling the data
+data<-ubBalance(X = ubInput, Y = ubOutput, type="ubSMOTE", percOver=300, percUnder=150, verbose=TRUE)
+attrition_data = cbind(data$X,data$Y)
+
+attrition_data$Attrition <- attrition_data$`data$Y`
+
+# now split the attrition data into train and test data
+
+training <-createDataPartition(attrition_data$Attrition, p = 0.9, list = FALSE)
+
+train_set <- attrition_data[training,]
+test_set <- attrition_data[-training,]
+
+knn_fit <- caret::train(Attrition ~ TotalWorkingYears + JobInvolvement + OverTime, data = train_set,
+                 method = "knn",
+                 trControl=tc,
+                 preProcess = c("center","scale"),
+                 tuneLength = 10)
+
+test_set
+predictions <- predict(knn_fit, newdata = test_set)
+
+confusionMatrix(predictions, test_set$Attrition)
+# summary(knn_fit)
+# print(knn_fit)
+```

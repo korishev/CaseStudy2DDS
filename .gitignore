@@ -28,5 +28,4 @@ vignettes/*.pdf
 .Renviron
 packrat/lib*/
 packrat/src/
-CaseStudy2.docx
-CaseStudy2.html
+

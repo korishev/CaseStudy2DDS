@@ -10,6 +10,8 @@ Greetings and welcome,
   Thank you for giving DDS Analytics the opportunity to help you answer the age old question, "Why do my employees leave?"  In the course of this analysis, we identified the top three factors that indicate employee turnover.
   For this analysis, we targetted an 80% or better accuracy, with a 60% or better result in both false positives and false negative, increasing confidence in the model well above that of random chance (50/50), or simply providing a "No" response to the question of "Will this particular employee leave in the next year?" That from this dataset, would actually be correct about 80% of the time
   We began by getting familiar with the data you provided, and started to develop an understanding of your employees.  We did this by graphing values, looking for correlations, and transforming data.
+  
+  The video of this presentation can be found [here](https://youtu.be/eM3l0sE8Qyc)
 
 ```{r setup, include=FALSE}
 # This project heavily leverages the "packrat" library to keep its dependencies from 
@@ -243,9 +245,9 @@ write.csv(out_file, file = "Case2PredictionsNelson_Attrition.csv", row.names = F
 ```
 You can see by the results below, we have indeed hit our targets:
 
-  * Accuracy    - 80.67%
-  * Sensitivity - 93.65%
-  * Specificity - 66.07%
+  * Accuracy    - 78.15%
+  * Sensitivity - 92.06%
+  * Specificity - 62.50%
   
   
 ```{r k-NN results}

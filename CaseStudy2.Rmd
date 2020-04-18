@@ -5,14 +5,21 @@ date: "3/20/2020"
 output: html_document
 ---
 
+Greetings and welcome,
+
+  Thank you for giving DDS Analytics the opportunity to help you answer the age old question, "Why do my employees leave?"  In the course of this analysis, we identified the top three factors that indicate employee turnover.
+  For this analysis, we targetted an 80% or better accuracy, with a 60% or better result in both false positives and false negative, increasing confidence in the model well above that of random chance (50/50), or simply providing a "No" response to the question of "Will this particular employee leave in the next year?" That from this dataset, would actually be correct about 80% of the time
+  We began by getting familiar with the data you provided, and started to develop an understanding of your employees.  We did this by graphing values, looking for correlations, and transforming data.
+
 ```{r setup, include=FALSE}
 # This project heavily leverages the "packrat" library to keep its dependencies from 
 # polluting your system.  Feel free to run this code with no worries about cleaning up 
-# your library path.  You will need to install packrat, but beyond that, this project
-# is self-contained
+# your library path.  You will need to install packrat first, but beyond that, this 
+# project is self-contained
 
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
+library(MASS)  # Careful with this one, it masks dplyr::select
 library(psych)
 library(caret)
 library(onewaytests) # provides paircomep()
@@ -21,6 +28,11 @@ library(e1071)
 library(unbalanced)
 library(patchwork)
 library(ggcorrplot)
+library(lemon)
+library(readxl)
+
+knit_print.data.frame <- lemon_print
+
 
 cs2 <- read.csv("data/CaseStudy2-data.csv")
 
@@ -28,8 +40,8 @@ cs2 <- read.csv("data/CaseStudy2-data.csv")
 # cs2$Attrition <- as.numeric(cs2$Attrition)
 ```
 
-```{r Initial EDA}
-# Do I need to fixup any data?
+```{r Initial EDA, include=FALSE}
+# Are there any NA values?
 anyNA(cs2)
 
 # generate summary statistics
@@ -65,13 +77,15 @@ cs2 %>% keep(is.numeric) %>% sapply(., unique)
 # Over18
 # StandardHours
 
-cs2.kept <- cs2 %>% select(-ID, -EmployeeCount, -EmployeeNumber, -Over18, -StandardHours)
+cs2.kept <- cs2 %>% dplyr::select(-ID, -EmployeeCount, -EmployeeNumber, -Over18, -StandardHours)
 
 # graph all continuous variables as histograms with normal distribution overlays
 cs2.kept %>% keep(is.numeric) %>%  multi.hist()
 
 # correlate the numeric terms
 cs2.kept %>% keep(is.numeric) %>% cor %>% ggcorrplot(type = "upper", show.diag = FALSE)
+
+# convert Attrition into a numeric variable
 cs2.kept <- cs2.kept %>% mutate(AttrYes = as.numeric(ifelse(Attrition == "Yes", 1, 0)))
 
 cs2.kept.numeric <- cs2.kept %>% keep(is.numeric)
@@ -80,57 +94,21 @@ cs2.kept.factor <- cs2.kept %>% keep(is.factor)
 
 
 ```
-```{r noname}
-# let's look at attrition rates for individual variables
+# Exploratory Data Analysis
 
-cs2.kept %>% group_by(BusinessTravel) %>% summarise(AttritionPercent = sum(as.numeric(Attrition)-1)/n(), totalPeople = n())
-cs2.kept %>% group_by(DailyRate) %>% summarise(AttritionPercent = sum(as.numeric(Attrition)-1)/n(), totalPeople = n())
-# cs2.kept %>% group_by(Department) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(DistanceFromHome) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(Education) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(EducationField) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(EnvironmentSatisfaction) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(Gender) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(HourlyRate) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(JobInvolvement) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(JobLevel) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(JobRole) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(JobSatisfaction) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(MaritalStatus) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(MonthlyIncome) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(MonthlyRate) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(NumCompaniesWorked) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(OverTime) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(PercentSalaryHike) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(PerformanceRating) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(RelationshipSatisfaction) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(StockOptionLevel) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(TotalWorkingYears) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(TrainingTimesLastYear) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(WorkLifeBalance) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(YearsAtCompany) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(YearsInCurrentRole) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(YearsSinceLastPromotion) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
-# cs2.kept %>% group_by(YearsWithCurrManager) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+After performing the initial Exploratory Data Analysis, it was decided to remove the following columns from the dataset:
 
-```
-```{r run anovas for correlations}
+*  ID - meaningful only to the database
+*  EmployeeCount - always "1" and adds nothing to the analysis
+*  EmployeeNumber - meaningful only to HR
+*  Over18 - Always "Y" and adds nothing to the analysis
+*  StandardHours - Always 80 and adds nothing to the analysis
 
-# run multiple ANOVAs to get all correlations
-summary(aov(AttrYes ~ ., data = cs2.kept.numeric))
+This left us with only the data that provided a possibly meaningful impact on employee turnover.  
 
-summary(aov(AttrYes ~ JobSatisfaction + TotalWorkingYears + NumCompaniesWorked + StockOptionLevel + Age + BusinessTravel + DailyRate + Department + DistanceFromHome + Education + EducationField + EnvironmentSatisfaction + Gender + HourlyRate + JobInvolvement + JobLevel + JobRole + MaritalStatus + MonthlyIncome + MonthlyRate + OverTime + PercentSalaryHike + PerformanceRating + TrainingTimesLastYear + WorkLifeBalance + YearsAtCompany + YearsAtCompany + YearsInCurrentRole + YearsSinceLastPromotion + YearsWithCurrManager, data = cs2.kept))
+Based on the visual output from graphing the histograms of the continuous variables, it appears that some of the distributions are not normal and appear to be more logarithmic in nature, tending to a severe right skew.  We tried transforming the data, but with the exception of **TotalWorkingYears**, it did not correct the data.  We did not need to transform the data to reach our target numbers.
 
-# filter out low correlation and look at what's left
-summary(aov(AttrYes ~ JobSatisfaction + TotalWorkingYears + NumCompaniesWorked + StockOptionLevel + DistanceFromHome + JobInvolvement + OverTime, data = cs2.kept))
-
-# reduce the set of "most important factors" to three
-summary(aov(AttrYes ~ TotalWorkingYears + JobInvolvement + OverTime, data = cs2.kept))
-
-```
-Based on the visual output from graphing the histograms of the continuous variables, it appears that some of the distributions are not normal, and in fact appear to be more logarithmic in nature, tending to a severe right skew.  We will transform the data and see if we get a better result.
-
-```{r perform data transformations}
+```{r perform data transformations, include=FALSE}
 
 cs2 <- cs2 %>% mutate(logTotalWorkingYears = log(TotalWorkingYears)) %>% 
   mutate(logDistanceFromHome = log(DistanceFromHome)) %>% 
@@ -144,71 +122,87 @@ cs2 <- cs2 %>% mutate(logTotalWorkingYears = log(TotalWorkingYears)) %>%
 cs2[, map_lgl(cs2, is.numeric)]  %>% subset(select=c(-ID, -EmployeeCount, -EmployeeNumber, -StandardHours)) %>%  multi.hist()
 ```
 
-TotalWorkingYears looks much better, but the rest of the variable don't appear to be much more normal than the were originally.  We will keep the log of TotalWorkingYears in mind as we work with the data set.
-``` {r setup the knn prediction}
+## Attrition Percentages
+  We then looked at the percentage of attrition present in each group, creating a table of values for each.  The full data is in the RMarkdown file provided separately.
+```{r attrition by attribute, render=lemon_print}
+# let's look at attrition rates for individual variables
 
-# set the random seed
-set.seed(124)
-
-training <-createDataPartition(cs2$Attrition, p = 0.9, list = FALSE)
-
-train_set <- cs2.kept[training,]
-test_set <- cs2.kept[-training,]
-
-tc = trainControl(method = "cv")
-
-knn_fit <- caret::train(Attrition ~ TotalWorkingYears + JobInvolvement, data = cs2.kept,
-                 method = "knn",
-                 trControl=tc,
-                 preProcess = c("center","scale"),
-                 tuneLength = 10)
-print(knn_fit)
-
-predictions <- predict(knn_fit, newdata = test_set)
-# View(data.frame(predictions, cs2_noOver18$Attrition ))
-confusionMatrix(predictions, test_set$Attrition)
-confusionMatrix(knn_fit)
-```
-
-``` {r prep for naive bayes}
-
-train_rows <- createDataPartition(cs2.kept$Attrition, p = .9, list=FALSE)
-
-train_set <- cs2.kept[train_rows,]
-test_set <- cs2.kept[-train_rows,]
-
-# distribution of attrition over the split sets:
-table(train_set$Attrition) %>% prop.table()
-table(test_set$Attrition) %>% prop.table()
-
-# data count in each set
-count(train_set)
-count(test_set)
+cs2.kept %>% group_by(BusinessTravel) %>% summarise(AttritionPercent = sum(as.numeric(Attrition)-1)/n(), totalPeople = n())
 
 ```
-```{r run training}
 
-bayes_fit <- naiveBayes(train_set[,c(29,15,23)], train_set$Attrition)
+  As you can see, **Travel_Frequently** in the *BusinessTravel* column has nearly double the employee turnover of the **Non-Travel** and **Travel_Rarely** categories, at 22%.
 
-predictions <- predict(bayes_fit, test_set[,c(29,15,23)])
-
-confusionMatrix(predictions, test_set$Attrition)
+```{r attrition by attribute full, include=FALSE}
+cs2.kept %>% group_by(DailyRate) %>% summarise(AttritionPercent = sum(as.numeric(Attrition)-1)/n(), totalPeople = n())
+cs2.kept %>% group_by(Department) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(DistanceFromHome) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(Education) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(EducationField) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(EnvironmentSatisfaction) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(Gender) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(HourlyRate) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(JobInvolvement) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(JobLevel) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(JobRole) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(JobSatisfaction) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(MaritalStatus) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(MonthlyIncome) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(MonthlyRate) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(NumCompaniesWorked) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(OverTime) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(PercentSalaryHike) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(PerformanceRating) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(RelationshipSatisfaction) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(StockOptionLevel) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(TotalWorkingYears) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(TrainingTimesLastYear) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(WorkLifeBalance) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(YearsAtCompany) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(YearsInCurrentRole) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(YearsSinceLastPromotion) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
+cs2.kept %>% group_by(YearsWithCurrManager) %>% summarise(AttritionPercent = (sum(as.numeric(cs2.kept$Attrition)-1)/n()), totalPeople = n())
 
 ```
-``` {r analyze bayes output}
-dim(predictions)
-bayes_fit
-summary(bayes_fit)
+
+## ANOVA Analysis
+  We also ran ANOVA variance analysis to get concrete numbers for the correlation of each variable with the goal, "Attrition".  From this analysis, we were able to determine the three variables that most significantly contributed to employee turnover:
+  
+  * TotalWorkingYears
+  * JobInvolvement
+  * OverTime
+  
+```{r run anovas for correlations, include=FALSE}
+
+# run multiple ANOVAs to get all correlations
+summary(aov(AttrYes ~ ., data = cs2.kept.numeric))
+
+summary(aov(AttrYes ~ JobSatisfaction + TotalWorkingYears + NumCompaniesWorked + StockOptionLevel + Age + BusinessTravel + DailyRate + Department + DistanceFromHome + Education + EducationField + EnvironmentSatisfaction + Gender + HourlyRate + JobInvolvement + JobLevel + JobRole + MaritalStatus + MonthlyIncome + MonthlyRate + OverTime + PercentSalaryHike + PerformanceRating + TrainingTimesLastYear + WorkLifeBalance + YearsAtCompany + YearsAtCompany + YearsInCurrentRole + YearsSinceLastPromotion + YearsWithCurrManager, data = cs2.kept))
+
+# filter out low correlation and look at what's left
+summary(aov(AttrYes ~ JobSatisfaction + TotalWorkingYears + NumCompaniesWorked + StockOptionLevel + DistanceFromHome + JobInvolvement + OverTime, data = cs2.kept))
+```
+
+```{r top three correlated variables}
+
+# reduce the set of "most important factors" to three
+summary(aov(AttrYes ~ TotalWorkingYears + JobInvolvement + OverTime, data = cs2.kept))
 
 ```
-```{r preprocess the unbalanced data set}
 
+## Create a Model
+  Now that we have the top three variables, we can create a mathematical model for predicting employee turnover.  We start with the k-Nearest Neighbors or k-NN model as this is easy to both implement and understand.  We find a *distance* from the data point we wish to predict as either "Leaving" or "Not Leaving" and the closest data point we already have.  If the majority of the new data points *Nearest Neighbors* have left the company, we predict this one will as well.
+
+### One More Thing
+  Another point of interest in the data model was identified.  The fact that the data we have represents approximately 80% employees who have not left the company, and only approximately 20% employess who have left the company creates an imbalanced data set that can throw off our k-NN model.  Ideally, when attempting to classify a ppopulation into two categories, we would want the known data to be approximately 50% one category and 50% the other.  To fixup this data, we have decided to use "**SMOTE**" or **Synthetic Minority Oversampling TEchnique** to bring the data set closer to the ideal.
+  **SMOTE** creates additional samples in the data set based on the existing samples of the minority value.  In this case, it will generate enough "Left" samples to balance out the "Did not leave" group, and give the k-NN a higher probability of success. 
+```{r preprocess the unbalanced data set, include = FALSE}
 # The unbalance library can help clean up unbalanced data sets, but the output factor must have levels 0,1
 set.seed(1974)
 
 cs2.kept <- cs2.kept %>% mutate(AttrFactor = as.factor(as.numeric(cs2.kept$Attrition) -1))
 ubOutput <- cs2.kept$AttrFactor
-ubInput <- cs2.kept %>% select(-Attrition,-AttrYes, -AttrFactor)
+ubInput <- cs2.kept %>% dplyr::select(-Attrition,-AttrYes, -AttrFactor)
 
 
 # SMOTE is "Synthetic Minority Oversampling TEchnique" and is an accepted way to counter
@@ -225,16 +219,119 @@ training <-createDataPartition(attrition_data$Attrition, p = 0.9, list = FALSE)
 train_set <- attrition_data[training,]
 test_set <- attrition_data[-training,]
 
+tc = trainControl(method = "cv")
+
 knn_fit <- caret::train(Attrition ~ TotalWorkingYears + JobInvolvement + OverTime, data = train_set,
                  method = "knn",
                  trControl=tc,
                  preProcess = c("center","scale"),
                  tuneLength = 10)
 
-test_set
-predictions <- predict(knn_fit, newdata = test_set)
+external_test <- read.csv("data/CaseStudy2CompSet_No_Attrition.csv")
 
-confusionMatrix(predictions, test_set$Attrition)
-# summary(knn_fit)
-# print(knn_fit)
+out_predict <- predict(knn_fit, newdata = external_test)
+out_file <- cbind(external_test$ID, out_predict)
+out_file <- as.data.frame(out_file)
+out_file <- out_file %>% rename(ID = V1, Attrition = out_predict)
+
+out_file <- out_file %>% mutate(Attrition = as.factor(Attrition))
+levels(out_file$Attrition) <- c("No","Yes")
+out_file
+
+write.csv(out_file, file = "Case2PredictionsNelson_Attrition.csv", row.names = FALSE, quote = FALSE)
+
 ```
+You can see by the results below, we have indeed hit our targets:
+
+  * Accuracy    - 80.67%
+  * Sensitivity - 93.65%
+  * Specificity - 66.07%
+  
+  
+```{r k-NN results}
+predictions <- predict(knn_fit, newdata = test_set)
+confusionMatrix(predictions, test_set$Attrition)
+```
+# Salary
+  Next, we were asked to find the Salary of employees from the data in the model, with a Root Mean Squared Error of less than $3000.  To do this, we will build a multiple linear regression model using a stepwise iterative approach.  The assumptions from above RE: unneccessary data still hold, and we will leave those out as well.
+```{r model salary, include=FALSE}
+set.seed(1974)
+
+lin_fit <- lm(MonthlyIncome ~ ., data = cs2.kept)
+step <- stepAIC(lin_fit, direction = "both")
+vcov(lin_fit)
+step$anova
+```
+```{r linear model fitness plots}
+layout(matrix(c(1,2,3,4),2,2))
+plot(lin_fit)
+```
+
+From these graphs, there is no evidence to suggest our model is working with unmet assumptions, so we will continue.
+
+The stepwise regression outcome gives us a final model of:
+
+MonthlyIncome predicted by:
+  BusinessTravel + DailyRate + DistanceFromHome + 
+    Gender + JobLevel + JobRole + MonthlyRate + PercentSalaryHike + 
+    PerformanceRating + TotalWorkingYears + YearsSinceLastPromotion + 
+    YearsWithCurrManager
+
+Pluging that into the software, we can find the Root Mean Square Error:  1034
+```{r test linear model, include=FALSE}
+lin_fit <- lm(MonthlyIncome ~ BusinessTravel + DailyRate + DistanceFromHome + 
+    Gender + JobLevel + JobRole + MonthlyRate + PercentSalaryHike + 
+    PerformanceRating + TotalWorkingYears + YearsSinceLastPromotion + 
+    YearsWithCurrManager, data = cs2.kept)
+
+plot(lin_fit)
+residuals(lin_fit)
+coefficients(lin_fit)
+influence(lin_fit)
+```
+```{r use the linear model to predict salary of unknown set, include = FALSE}
+salary_data = read_excel("data/CaseStudy2CompSet No Salary.xlsx")
+out_predict <- predict(lin_fit, newdata = salary_data)
+
+out_file <- cbind(salary_data$ID, out_predict)
+out_file <- as.data.frame(out_file)
+out_file <- out_file %>% rename(ID = V1, MonthlyIncome = out_predict)
+
+# We don't need fractional dollars here
+out_file$MonthlyIncome <- sapply(out_file$MonthlyIncome, round)
+
+write_excel_csv(out_file, path = "Case2PredictionsNelson_Salary.csv")
+
+```
+```{r RMSE of linear model}
+RMSE <- sqrt((c(crossprod(residuals(lin_fit))) / length(residuals(lin_fit))))
+RMSE
+```
+And a model equation describing **MonthlyIncome** as:
+
+MonthlyIncome = 246.97 + 223.32(BusinessTravel(Travel_Frequently)) + 390.73(BusinessTravel(Travel_Rarely)) + 14.992(DailyRate) - 6.68(DistanceFromHome) + 113.69(Gender-male) + 2789.60(JobLevel) - 363.48(JobRole(Human Resources)) - 596.72(JobRole(Laboratory Technician)) + 4125.71(JobRole(Manager)) + 167.73(JobRole(Manufacturing Director)) + 4033.20(JobRole(ResearchDirector)) - 353.78(JobRole(Research Scientist)) - 4.45(JobRole(Sales Executive)) - 456.02(JobRole(Sales Representative)) - 0.92(MonthlyRate) + 23.76(PercentSalaryHike) - 306.63(PerformanceRating) + 48.20(TotalWorkingYears) + 29.92(YearsSinceLastPromotion) - 27.90(YearsWithCurrentManager)
+
+
+                   
+                   
+## Additional Job Role Specific Findings
+
+Additionally, we were asked to provide any insights into Job Role specific trends in the data.
+
+```{r job role specific findings, render=lemon_print}
+cs2.kept %>% group_by(JobRole) %>% summarise(HighlySatisfied = sum(JobSatisfaction == 4)/n(), MostlySatisfied = sum(JobSatisfaction == 3)/n(), SortaSatisfied = sum(JobSatisfaction == 2)/n(), Dissatisfied = sum(JobSatisfaction == 1)/n(), totalPeople = n()) %>% arrange(., desc(HighlySatisfied))
+```
+
+Your Healthcare Representative are the most satisfied, while your Research Directors are the least likely to be highly satisfied with their job role.  The Research Directors are also most likely to be dissatisfied with their job role.
+
+```{r Marital Status, render=lemon_print}
+cs2.kept %>% group_by(JobRole) %>% summarise(Married = sum(MaritalStatus == "Married")/n(), Single = sum(MaritalStatus == "Single")/n(), Divorced = sum(MaritalStatus == "Divorced")/n(), totalPeople = n()) %>% arrange(., desc(Married, Single, Divorced))
+```
+
+Your Managers are most likely to be married, your Sales Reps are most likely to be single, and your HR staff are most likely to be divorced.
+
+```{r Job Satisfaction over time}
+cs2.kept %>% filter(Attrition == "No") %>% ggplot() + geom_point(aes(YearsAtCompany, JobRole, color = JobSatisfaction), position = "jitter") + labs(title="General Job satisfaction by Time and Role")
+```
+
+Also, assuming people who have worked at your company longer are more valuable, you seem to have several people here for more than 30 years who aren't really satisfied with their jobs.  Perhaps this is something that should be looked into?
